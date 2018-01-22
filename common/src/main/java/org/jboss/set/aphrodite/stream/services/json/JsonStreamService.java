@@ -71,7 +71,8 @@ public class JsonStreamService implements StreamService {
     // as on READ operation. We write from this structure, if order change, huge diff on small change
     // might happen. We store LinkedHashMap.values(), which retain order from map
     private final Map<URL, Collection<Stream>> urlToParsedStreams = new LinkedHashMap<>();
-    private AphroditeConfig config;
+    private AphroditeConfig config;//jsut for ref. This is mutable.
+    private StreamConfig streamConfig;
 
     @Override
     public boolean init(Aphrodite aphrodite, AphroditeConfig config) throws NotFoundException {
@@ -100,14 +101,24 @@ public class JsonStreamService implements StreamService {
 
     @Override
     public synchronized boolean updateStreams() throws NotFoundException {
-        Iterator<StreamConfig> i = this.config.getStreamConfigs().iterator();
-        while (i.hasNext()) {
-            StreamConfig streamConfig = i.next();
-            if (streamConfig.getStreamType() == StreamType.JSON) {
-                return init(streamConfig);
+        if (this.streamConfig != null) {
+            return this.init(this.streamConfig);
+        } else {
+            Iterator<StreamConfig> i = this.config.getStreamConfigs().iterator();
+            while (i.hasNext()) {
+                StreamConfig streamConfig = i.next();
+                if (streamConfig.getStreamType() == StreamType.JSON) {
+                    if(this.init(streamConfig)) {
+                        i.remove();
+                        this.streamConfig = streamConfig;
+                        return true;
+                    } else {
+                        return false;
+                    }
+                }
             }
+            return false;
         }
-        return false;
     }
 
     @Override
@@ -183,9 +194,6 @@ public class JsonStreamService implements StreamService {
             throw new NotFoundException("No matching set of streams for '" + url + "'");
         }
         JsonObject jsonObject = StreamsJsonParser.encode(streams);
-        // JsonWriter jsonWriter = Json.createWriter(out);
-        // jsonWriter.writeObject(jsonObject);
-        // jsonWriter.close();
         Map<String, Boolean> config = buildConfig();
         JsonWriterFactory writerFactory = Json.createWriterFactory(config);
         JsonWriter jsonWriter = writerFactory.createWriter(out);
